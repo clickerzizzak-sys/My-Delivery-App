@@ -32,21 +32,24 @@ if df_raw is None:
     st.info("Waiting for valid Google Sheet data connection...")
     st.stop()
 
-# --- GET YOUR LIVE IPHONE GPS LOCATION ---
+# --- GET YOUR LIVE IPHONE GPS LOCATION WITH INSTANT FALLBACK ---
 st.subheader("📍 Your Starting Location")
 user_location = streamlit_js_eval(data_string="colloquial", function_name="get_location", key="get_user_gps")
 
+# This fallback defaults to your central region baseline if the phone GPS takes too long to load
+DEFAULT_START_LAT = 16.8409
+DEFAULT_START_LON = 96.1735
+
 if not user_location:
-    st.info("🔄 Waiting for phone GPS signal... If it takes too long, make sure location access is enabled for your browser.")
-    # Standard baseline fallback coordinate if browser GPS initialization stalls
-    current_gps = (16.8409, 96.1735)
+    st.info("🔄 Waiting for phone GPS signal... Using baseline starting coordinates in the meantime.")
+    current_gps = (DEFAULT_START_LAT, DEFAULT_START_LON)
 else:
     current_gps = (user_location['coords']['latitude'], user_location['coords']['longitude'])
-    st.success(f"✅ GPS Position Active: {current_gps[0]:.5f}, {current_gps[1]:.5f}")
+    st.success(f"✅ Live GPS Position Active: {current_gps[0]:.5f}, {current_gps[1]:.5f}")
 
 # --- MANUAL SEARCH FILTER BAR ---
 st.subheader("🔍 Filter Outlets")
-search_query = st.text_input("Type a day (e.g., Wed, Mon) or name to filter your list:", "").strip()
+search_query = st.text_input("Type a day (e.g., Wed, Mon) or name to filter your list:", "Tue").strip()
 
 if search_query:
     df_filtered = df_raw[
@@ -100,7 +103,7 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
         route_stops = selected_outlets
         coordinates = [OUTLET_BANK[name] for name in route_stops]
         
-        # Lock current live phone GPS location as the fixed starting origin point
+        # Set start point
         start_coord = current_gps
         dest_coords = coordinates
         dest_indices = list(range(len(dest_coords)))
@@ -108,7 +111,6 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
         best_distance = float('inf')
         best_path = []
         
-        # Calculate most efficient sequence sorting loop route sequence
         for perm in itertools.permutations(dest_indices):
             current_distance = 0
             current_path = [0]
@@ -129,7 +131,7 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
                 best_path = current_path
 
         st.session_state.best_path = best_path
-        st.session_state.route_stops = ["My Live Location"] + route_stops
+        st.session_state.route_stops = ["My Start Location"] + route_stops
         st.session_state.total_distance = best_distance
         st.session_state.route_calculated = True
 
@@ -138,33 +140,25 @@ if getattr(st.session_state, 'route_calculated', False):
     saved_stops = st.session_state.route_stops
     saved_path = st.session_state.best_path
     
-    # Reassemble exact route sequencing coordinate order mapping array
     coords_list = [current_gps] + [OUTLET_BANK[name] for name in saved_stops[1:]]
     
     st.success(f"✅ Route Optimized! Combined Distance: {st.session_state.total_distance:.2f} km")
     
-    # --- STABLE MAP LAUNCH DEEP LINK ROUTINE ---
+    # Standard official query string format for universal Google Maps directions
     origin_str = f"{current_gps[0]},{current_gps[1]}"
-    
-    # Map out chronological sequence routing array list
     ordered_destinations = [coords_list[idx] for idx in saved_path[1:-1]]
     
     if ordered_destinations:
-        # Final delivery point destination stop marker target coordinate
         final_dest = f"{ordered_destinations[-1][0]},{ordered_destinations[-1][1]}"
-        
-        # Bundle intermediate delivery waypoints up to max limits
         mid_waypoints = ordered_destinations[:-1]
         waypoint_coords_string = "|".join([f"{c[0]},{c[1]}" for c in mid_waypoints])
-        
         encoded_waypoints = urllib.parse.quote(waypoint_coords_string)
         
-        # Clean, functional universal navigation launch protocol link string structure
+        # Clean, working web protocol link that natively wakes up the iPhone Google Maps app
         gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={final_dest}&waypoints={encoded_waypoints}&travelmode=driving"
-        
         st.link_button("🗺️ LAUNCH BATCH MAPS ROUTE", gmaps_url, use_container_width=True)
 
-    # Render Local Mapping View Display Box Frame Frame
+    # Render Visual Preview Map
     m = folium.Map(location=current_gps, zoom_start=13)
     path_coords = [coords_list[idx] for idx in saved_path]
     folium.PolyLine(path_coords, color="blue", weight=5).add_to(m)

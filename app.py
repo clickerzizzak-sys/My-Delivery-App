@@ -5,27 +5,13 @@ import itertools
 from geopy.distance import geodesic
 import urllib.parse
 
-st.set_page_config(page_title="Delivery Pro", layout="wide", initial_sidebar_state="collapsed")
-
-# Custom CSS to make it look like a high-end dark-mode mobile app
-st.markdown("""
-    <style>
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
-    h1 { color: #FF4B4B; font-size: 24px !important; }
-    .stButton>button { width: 100%; border-radius: 10px; height: 3rem; font-size: 16px; font-weight: bold; }
-    .nav-box {
-        background-color: #262730;
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        border-left: 5px solid #FF4B4B;
-    }
-    </style>
-""", unsafe_allowed_html=True)
+st.set_page_config(page_title="Delivery Pro", layout="wide")
 
 st.title("🚚 Delivery Router Pro")
+st.write("Select your outlets below to generate the absolute best driving route.")
 
 # --- THE GPS STORAGE BANK ---
+# Feel free to update these lines later with your real coordinates!
 OUTLET_BANK = {
     "Depot / Starting Point": (16.8409, 96.1735), 
     "Store Outlet 1 - Downtown": (16.7762, 96.1548),
@@ -37,6 +23,12 @@ OUTLET_BANK = {
 
 if 'route_calculated' not in st.session_state:
     st.session_state.route_calculated = False
+if 'best_path' not in st.session_state:
+    st.session_state.best_path = []
+if 'route_stops' not in st.session_state:
+    st.session_state.route_stops = []
+if 'total_distance' not in st.session_state:
+    st.session_state.total_distance = 0.0
 
 st.subheader("📋 Select Today's Outlets")
 start_node = "Depot / Starting Point"
@@ -55,13 +47,13 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
         route_stops = [start_node] + selected_outlets
         coordinates = [OUTLET_BANK[name] for name in route_stops]
         
-        # TSP Solver Engine
         start_coord = coordinates[0]
         dest_coords = coordinates[1:]
         dest_indices = list(range(len(dest_coords)))
         best_distance = float('inf')
         best_path = []
         
+        # Math calculation loop for route order
         for perm in itertools.permutations(dest_indices):
             current_distance = 0
             current_path = [0]
@@ -87,42 +79,42 @@ if st.session_state.route_calculated:
     saved_path = st.session_state.best_path
     coords_list = [OUTLET_BANK[name] for name in saved_stops]
     
-    st.success(f"Route Optimized: {st.session_state.total_distance:.1f} km")
+    st.success(f"✅ Route Optimized: {st.session_state.total_distance:.1f} km")
     
-    # --- GOOGLE MAPS MULTI-STOP HACK ---
-    # This builds a single link containing the first 9 stops in order
-    gmaps_base = "https://www.google.com/maps/dir/?api=1"
+    # --- GOOGLE MAPS MULTI-STOP LINK GENERATOR ---
+    gmaps_base = "http://googleusercontent.com/maps.google.com/5"
     origin = f"&origin={coords_list[0][0]},{coords_list[0][1]}"
-    
-    # Get ordered coordinates for stops (excluding start and final return)
     ordered_coords = [coords_list[idx] for idx in saved_path[1:-1]]
     
     if ordered_coords:
-        destination = f"&destination={ordered_coords[-1][0]},{ordered_coords[-1][1]}"
-        waypoints = "|".join([f"{c[0]},{c[1]}" for c in ordered_coords[:-1]])
+        # Keep within Google's 10-location mobile string limits
+        gmaps_batch = ordered_coords[:9]
+        destination = f"&destination={gmaps_batch[-1][0]},{gmaps_batch[-1][1]}"
+        waypoints = "|".join([f"{c[0]},{c[1]}" for c in gmaps_batch[:-1]])
         waypoint_str = f"&waypoints={urllib.parse.quote(waypoints)}" if waypoints else ""
         full_gmaps_url = f"{gmaps_base}{origin}{destination}{waypoint_str}&travelmode=driving"
         
-        st.markdown(f'<a href="{full_gmaps_url}" target="_blank"><button style="width:100%; background-color:#4CAF50; color:white; border:none; border-radius:10px; height:3.5rem; font-weight:bold; font-size:16px; margin-bottom:20px; cursor:pointer;">🗺️ OPEN ENTIRE ROUTE IN GOOGLE MAPS</button></a>', unsafe_allowed_html=True)
+        st.link_button("🗺️ OPEN BATCH IN GOOGLE MAPS", full_gmaps_url, use_container_width=True)
 
-    # Clean App Interface Layout
-    m = folium.Map(location=coords_list[0], zoom_start=12, zoom_control=False)
+    # Map visualization block
+    m = folium.Map(location=coords_list[0], zoom_start=12)
     path_coords = [coords_list[idx] for idx in saved_path]
-    folium.PolyLine(path_coords, color="#FF4B4B", weight=5).add_to(m)
-    st_folium(m, width=700, height=300, key="pro_map")
+    folium.PolyLine(path_coords, color="blue", weight=5).add_to(m)
+    
+    for idx, name in enumerate(saved_stops):
+        coord = OUTLET_BANK[name]
+        if name == start_node:
+            folium.Marker(coord, popup=name, icon=folium.Icon(color='red', icon='home')).add_to(m)
+        else:
+            folium.Marker(coord, popup=name, icon=folium.Icon(color='green')).add_to(m)
+            
+    st_folium(m, width=700, height=350, key="fixed_pro_map")
     
     st.subheader("🏁 Stop-by-Stop Order")
     for step, idx in enumerate(saved_path[:-1]):
         stop_name = saved_stops[idx]
         lat, lon = OUTLET_BANK[stop_name]
-        single_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"
+        single_url = f"http://googleusercontent.com/maps.google.com/6{lat},{lon}"
         
-        st.markdown(f"""
-            <div class="nav-box">
-                <small style="color:#aaa;">STOP {step if step > 0 else 'START'}</small>
-                <div style="font-size:18px; font-weight:bold; margin-bottom:10px;">{stop_name}</div>
-                <a href="{single_url}" target="_blank" style="text-decoration:none;">
-                    <button style="background-color:#008CBA; color:white; border:none; padding:5px 15px; border-radius:5px; font-weight:bold; width:auto; height:auto; cursor:pointer;">🧭 Open Map</button>
-                </a>
-            </div>
-        """, unsafe_allowed_html=True)
+        label = f"START: {stop_name}" if step == 0 else f"STOP {step}: {stop_name}"
+        st.link_button(f"🧭 {label}", single_url, use_container_width=True)

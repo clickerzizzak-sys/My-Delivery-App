@@ -12,7 +12,7 @@ st.write("Select your outlets below to generate the absolute best driving route.
 # --- THE GPS STORAGE BANK ---
 OUTLET_BANK = {
     "Depot / Starting Point": (16.8409, 96.1735), 
-    "Daw Khin Hla - ": (16.8440648,96.1847088)
+    "Daw Khin Hla - ": (16.8440648,96.1847088),
     "Store Outlet 2 - North Junction": (16.8660, 96.1450),
     "Store Outlet 3 - East Market": (16.8050, 96.2100),
     "Store Outlet 4 - Hlaing Township": (16.8480, 96.1240),

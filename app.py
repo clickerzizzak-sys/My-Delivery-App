@@ -36,12 +36,12 @@ if df_raw is None:
 st.subheader("📍 Your Starting Location")
 user_location = streamlit_js_eval(data_string="colloquial", function_name="get_location", key="get_user_gps")
 
-# This fallback defaults to your central region baseline if the phone GPS takes too long to load
-DEFAULT_START_LAT = 16.8409
-DEFAULT_START_LON = 96.1735
+# Updated per your exact coordinate request!
+DEFAULT_START_LAT = 16.9128391
+DEFAULT_START_LON = 96.1534666
 
 if not user_location:
-    st.info("🔄 Waiting for phone GPS signal... Using baseline starting coordinates in the meantime.")
+    st.info("🔄 Waiting for phone GPS signal... Using your custom starting position as the baseline.")
     current_gps = (DEFAULT_START_LAT, DEFAULT_START_LON)
 else:
     current_gps = (user_location['coords']['latitude'], user_location['coords']['longitude'])
@@ -103,7 +103,7 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
         route_stops = selected_outlets
         coordinates = [OUTLET_BANK[name] for name in route_stops]
         
-        # Set start point
+        # Set start point to your locked coordinates
         start_coord = current_gps
         dest_coords = coordinates
         dest_indices = list(range(len(dest_coords)))
@@ -144,7 +144,7 @@ if getattr(st.session_state, 'route_calculated', False):
     
     st.success(f"✅ Route Optimized! Combined Distance: {st.session_state.total_distance:.2f} km")
     
-    # Standard official query string format for universal Google Maps directions
+    # Clean universal navigation links
     origin_str = f"{current_gps[0]},{current_gps[1]}"
     ordered_destinations = [coords_list[idx] for idx in saved_path[1:-1]]
     
@@ -154,7 +154,6 @@ if getattr(st.session_state, 'route_calculated', False):
         waypoint_coords_string = "|".join([f"{c[0]},{c[1]}" for c in mid_waypoints])
         encoded_waypoints = urllib.parse.quote(waypoint_coords_string)
         
-        # Clean, working web protocol link that natively wakes up the iPhone Google Maps app
         gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={final_dest}&waypoints={encoded_waypoints}&travelmode=driving"
         st.link_button("🗺️ LAUNCH BATCH MAPS ROUTE", gmaps_url, use_container_width=True)
 

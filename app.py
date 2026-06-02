@@ -11,7 +11,6 @@ st.title("🚚 Delivery Router Pro")
 st.write("Select your outlets below to generate the absolute best driving route.")
 
 # --- THE GPS STORAGE BANK ---
-# Feel free to update these lines later with your real coordinates!
 OUTLET_BANK = {
     "Depot / Starting Point": (16.8409, 96.1735), 
     "Store Outlet 1 - Downtown": (16.7762, 96.1548),
@@ -53,7 +52,6 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
         best_distance = float('inf')
         best_path = []
         
-        # Math calculation loop for route order
         for perm in itertools.permutations(dest_indices):
             current_distance = 0
             current_path = [0]
@@ -81,13 +79,13 @@ if st.session_state.route_calculated:
     
     st.success(f"✅ Route Optimized: {st.session_state.total_distance:.1f} km")
     
-    # --- GOOGLE MAPS MULTI-STOP LINK GENERATOR ---
-    gmaps_base = "http://googleusercontent.com/maps.google.com/5"
+    # --- FIXED OFFICIAL GOOGLE MAPS MULTI-STOP LINK ---
+    gmaps_base = "https://www.google.com/maps/dir/?api=1"
     origin = f"&origin={coords_list[0][0]},{coords_list[0][1]}"
     ordered_coords = [coords_list[idx] for idx in saved_path[1:-1]]
     
     if ordered_coords:
-        # Keep within Google's 10-location mobile string limits
+        # Keep inside Google Maps' max 9-waypoint mobile ceiling
         gmaps_batch = ordered_coords[:9]
         destination = f"&destination={gmaps_batch[-1][0]},{gmaps_batch[-1][1]}"
         waypoints = "|".join([f"{c[0]},{c[1]}" for c in gmaps_batch[:-1]])
@@ -96,7 +94,7 @@ if st.session_state.route_calculated:
         
         st.link_button("🗺️ OPEN BATCH IN GOOGLE MAPS", full_gmaps_url, use_container_width=True)
 
-    # Map visualization block
+    # Preview Map Frame
     m = folium.Map(location=coords_list[0], zoom_start=12)
     path_coords = [coords_list[idx] for idx in saved_path]
     folium.PolyLine(path_coords, color="blue", weight=5).add_to(m)
@@ -114,7 +112,9 @@ if st.session_state.route_calculated:
     for step, idx in enumerate(saved_path[:-1]):
         stop_name = saved_stops[idx]
         lat, lon = OUTLET_BANK[stop_name]
-        single_url = f"http://googleusercontent.com/maps.google.com/6{lat},{lon}"
+        
+        # Fixed single location launch URL
+        single_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
         
         label = f"START: {stop_name}" if step == 0 else f"STOP {step}: {stop_name}"
         st.link_button(f"🧭 {label}", single_url, use_container_width=True)

@@ -12,16 +12,20 @@ st.title("🚚 Manual Control Delivery Router")
 st.write("Search, filter, and choose your outlets manually.")
 
 # --- CONNECT TO YOUR GOOGLE SHEET ---
+# I have embedded your exact link here and added a cleaner function below to fix it!
 GSHEET_URL = "https://docs.google.com/spreadsheets/d/1koRRrPEzAIOlt1LW8sFW6WdY2aoR5l-qogaua3DH6zg/edit?usp=drivesdk"
 
-@st.cache_data(ttl=2)  # Refreshes almost instantly when you change your sheet
+@st.cache_data(ttl=2)
 def load_sheet_data(url):
     try:
-        csv_url = url.split('/edit')[0] + '/gviz/tq?tqx=out:csv'
+        # This cleaning step safely strips out 'edit?usp=drivesdk' or any other suffix automatically
+        base_url = url.split('/edit')[0]
+        csv_url = f"{base_url}/gviz/tq?tqx=out:csv"
+        
         df = pd.read_csv(csv_url)
         return df
     except Exception as e:
-        st.error("Connection Error. Verify column headers match exactly: Cus;Name | Service Day | GPS")
+        st.error("Connection Error. Please double-check that 'Anyone with the link' is set to Viewer inside Google Sheets Share settings.")
         return None
 
 df_raw = load_sheet_data(GSHEET_URL)
@@ -34,9 +38,7 @@ if df_raw is None:
 st.subheader("🔍 Filter Outlets")
 search_query = st.text_input("Type a day (e.g., Wed, Mon) or name to filter your list:", "").strip()
 
-# Filter data based on what you type in the box
 if search_query:
-    # Searches across both the Name and the Service Day columns
     df_filtered = df_raw[
         df_raw['Cus;Name'].astype(str).str.contains(search_query, case=False, na=False) |
         df_raw['Service Day'].astype(str).str.contains(search_query, case=False, na=False)
@@ -57,13 +59,12 @@ for _, row in df_filtered.iterrows():
             continue
 
 if not OUTLET_BANK:
-    st.warning("No outlets match your search filter.")
+    st.warning("No outlets match your search filter or some GPS data is missing a comma.")
     st.stop()
 
 # --- CHECKBOX SELECTION ---
 st.subheader(f"📋 Outlets Found ({len(OUTLET_BANK)})")
 
-# Quick toggle options
 col_toggle1, col_toggle2 = st.columns(2)
 with col_toggle1:
     select_all = st.button("✅ Select All Visible")
@@ -77,7 +78,6 @@ if select_all:
 
 selected_outlets = []
 for outlet_name in OUTLET_BANK.keys():
-    # Determine if checkbox should be checked by default
     is_checked = outlet_name in st.session_state.selected_list or select_all
     if st.checkbox(f"📍 {outlet_name}", value=is_checked, key=f"check_{outlet_name}"):
         selected_outlets.append(outlet_name)
@@ -128,19 +128,12 @@ if getattr(st.session_state, 'route_calculated', False):
     
     st.success(f"✅ Route Optimized: {st.session_state.total_distance:.1f} km")
     
-    # Google Maps Multi-Stop Batch Launcher
-    gmaps_base = "https://www.google.com/maps"
-    origin = f"saddr={coords_list[saved_path[0]][0]},{coords_list[saved_path[0]][1]}"
-    ordered_stops = [coords_list[idx] for idx in saved_path[1:-1]]
-    if ordered_stops:
-        gmaps_batch = ordered_stops[:9]
-        destination = f"&daddr={gmaps_batch[0][0]},{gmaps_batch[0][1]}"
-        if len(gmaps_batch) > 1:
-            waypoints = "+to:".join([f"{c[0]},{c[1]}" for c in gmaps_batch[1:]])
-            destination += f"+to:{waypoints}"
-        
-        full_gmaps_url = f"{gmaps_base}?{origin}{destination}"
-        st.link_button("🗺️ OPEN BATCH IN GOOGLE MAPS APP", full_gmaps_url, use_container_width=True)
+    # Official Google Maps Mobile Launch Deep Link
+    gmaps_base = "https://www.google.com/maps/dir/"
+    ordered_coords_strings = [f"{coords_list[idx][0]},{coords_list[idx][1]}" for idx in saved_path]
+    full_gmaps_url = gmaps_base + "/".join(ordered_coords_strings[:10])
+
+    st.link_button("🗺️ OPEN BATCH IN GOOGLE MAPS APP", full_gmaps_url, use_container_width=True)
 
     # Preview Map Frame
     m = folium.Map(location=coords_list[0], zoom_start=13)
@@ -157,7 +150,7 @@ if getattr(st.session_state, 'route_calculated', False):
     for step, idx in enumerate(saved_path[:-1]):
         stop_name = saved_stops[idx]
         lat, lon = OUTLET_BANK[stop_name]
-        single_url = f"https://www.google.com/maps?q={lat},{lon}"
+        single_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
         
         label = f"STARTING POINT: {stop_name}" if step == 0 else f"STOP {step}: {stop_name}"
         st.link_button(f"🧭 {label}", single_url, use_container_width=True)

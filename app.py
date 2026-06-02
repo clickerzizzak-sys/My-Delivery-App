@@ -9,8 +9,8 @@ from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Delivery Pro", layout="wide")
 
-st.title("🚚 Live Location Delivery Router")
-st.write("Routes will automatically start from your current iPhone GPS position.")
+st.title("🚚 Manual Control Delivery Router")
+st.write("Search, filter, and choose your outlets manually from your sheet.")
 
 # --- CONNECT TO YOUR GOOGLE SHEET ---
 GSHEET_URL = "https://docs.google.com/spreadsheets/d/1koRRrPEzAIOlt1LW8sFW6WdY2aoR5l-qogaua3DH6zg/edit?usp=drivesdk"
@@ -23,7 +23,7 @@ def load_sheet_data(url):
         df = pd.read_csv(csv_url)
         return df
     except Exception as e:
-        st.error("Connection Error. Please double-check that 'Anyone with the link' is set to Viewer inside Google Sheets Share settings.")
+        st.error("Connection Error. Please verify your Google Sheets Share settings are set to 'Anyone with the link can view'.")
         return None
 
 df_raw = load_sheet_data(GSHEET_URL)
@@ -33,16 +33,16 @@ if df_raw is None:
     st.stop()
 
 # --- GET YOUR LIVE IPHONE GPS LOCATION ---
-st.subheader("📍 Your Current Location")
-# This triggers the standard iPhone pop-up asking for permission to use your location
+st.subheader("📍 Your Starting Location")
 user_location = streamlit_js_eval(data_string="colloquial", function_name="get_location", key="get_user_gps")
 
 if not user_location:
-    st.warning("🔄 Fetching your current phone GPS location... Please tap 'Allow' if your iPhone asks for location permissions.")
-    current_gps = (16.8409, 96.1735) # Fallback to your standard depot location if GPS loads slowly
+    st.info("🔄 Waiting for phone GPS signal... If it takes too long, make sure location access is enabled for your browser.")
+    # Standard baseline fallback coordinate if browser GPS initialization stalls
+    current_gps = (16.8409, 96.1735)
 else:
     current_gps = (user_location['coords']['latitude'], user_location['coords']['longitude'])
-    st.success(f"📍 GPS Location Locked: {current_gps[0]:.4f}, {current_gps[1]:.4f}")
+    st.success(f"✅ GPS Position Active: {current_gps[0]:.5f}, {current_gps[1]:.5f}")
 
 # --- MANUAL SEARCH FILTER BAR ---
 st.subheader("🔍 Filter Outlets")
@@ -56,7 +56,7 @@ if search_query:
 else:
     df_filtered = df_raw.copy()
 
-# Convert to coordinate dictionary
+# Convert raw sheet rows to clean coordinate dictionary coordinates
 OUTLET_BANK = {}
 for _, row in df_filtered.iterrows():
     name = str(row['Cus;Name']).strip()
@@ -69,11 +69,11 @@ for _, row in df_filtered.iterrows():
             continue
 
 if not OUTLET_BANK:
-    st.warning("No outlets match your search filter or some GPS data is missing a comma.")
+    st.warning("No outlets found matching your search term.")
     st.stop()
 
-# --- CHECKBOX SELECTION ---
-st.subheader(f"📋 Outlets Found ({len(OUTLET_BANK)})")
+# --- CHECKBOX SELECTION LAYOUT ---
+st.subheader(f"📋 Available Outlets ({len(OUTLET_BANK)})")
 
 col_toggle1, col_toggle2 = st.columns(2)
 with col_toggle1:
@@ -95,12 +95,12 @@ for outlet_name in OUTLET_BANK.keys():
 # --- ROUTE OPTIMIZATION ENGINE ---
 if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
     if not selected_outlets:
-        st.error("Please select at least one outlet checkbox!")
+        st.error("Please select at least one destination checkbox above!")
     else:
         route_stops = selected_outlets
         coordinates = [OUTLET_BANK[name] for name in route_stops]
         
-        # Inject your live phone location as Stop #0
+        # Lock current live phone GPS location as the fixed starting origin point
         start_coord = current_gps
         dest_coords = coordinates
         dest_indices = list(range(len(dest_coords)))
@@ -108,7 +108,7 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
         best_distance = float('inf')
         best_path = []
         
-        # Calculate best driving loop starting from where you stand
+        # Calculate most efficient sequence sorting loop route sequence
         for perm in itertools.permutations(dest_indices):
             current_distance = 0
             current_path = [0]
@@ -129,41 +129,59 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
                 best_path = current_path
 
         st.session_state.best_path = best_path
-        st.session_state.route_stops = ["My Current Location"] + route_stops
+        st.session_state.route_stops = ["My Live Location"] + route_stops
         st.session_state.total_distance = best_distance
         st.session_state.route_calculated = True
 
-# --- DISPLAY MAP AND LINKS ---
+# --- OUTPUT AND MAP LAYOUTS ---
 if getattr(st.session_state, 'route_calculated', False):
     saved_stops = st.session_state.route_stops
     saved_path = st.session_state.best_path
     
-    # Reconstruct the tracking layout array
+    # Reassemble exact route sequencing coordinate order mapping array
     coords_list = [current_gps] + [OUTLET_BANK[name] for name in saved_stops[1:]]
     
-    st.success(f"✅ Route Optimized: {st.session_state.total_distance:.1f} km")
+    st.success(f"✅ Route Optimized! Combined Distance: {st.session_state.total_distance:.2f} km")
     
-    # Official Google Maps Mobile Launch Deep Link
-    gmaps_base = "https://www.google.com/maps/dir/?api=1&origin=Paris%2CFrance&destination=Cherbourg%2CFrance&travelmode=driving&waypoints=Versailles%2CFrance%7CChartres%2CFrance%7CLe+Mans%2CFrance%7CCaen%2CFrance"
-    ordered_coords_strings = [f"{coords_list[idx][0]},{coords_list[idx][1]}" for idx in saved_path]
-    full_gmaps_url = gmaps_base + "/".join(ordered_coords_strings[:10])
+    # --- STABLE MAP LAUNCH DEEP LINK ROUTINE ---
+    origin_str = f"{current_gps[0]},{current_gps[1]}"
+    
+    # Map out chronological sequence routing array list
+    ordered_destinations = [coords_list[idx] for idx in saved_path[1:-1]]
+    
+    if ordered_destinations:
+        # Final delivery point destination stop marker target coordinate
+        final_dest = f"{ordered_destinations[-1][0]},{ordered_destinations[-1][1]}"
+        
+        # Bundle intermediate delivery waypoints up to max limits
+        mid_waypoints = ordered_destinations[:-1]
+        waypoint_coords_string = "|".join([f"{c[0]},{c[1]}" for c in mid_waypoints])
+        
+        encoded_waypoints = urllib.parse.quote(waypoint_coords_string)
+        
+        # Clean, functional universal navigation launch protocol link string structure
+        gmaps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin_str}&destination={final_dest}&waypoints={encoded_waypoints}&travelmode=driving"
+        
+        st.link_button("🗺️ LAUNCH BATCH MAPS ROUTE", gmaps_url, use_container_width=True)
 
-    st.link_button("🗺️ OPEN BATCH IN GOOGLE MAPS APP", full_gmaps_url, use_container_width=True)
-
-    # Preview Map Frame
+    # Render Local Mapping View Display Box Frame Frame
     m = folium.Map(location=current_gps, zoom_start=13)
     path_coords = [coords_list[idx] for idx in saved_path]
     folium.PolyLine(path_coords, color="blue", weight=5).add_to(m)
     
-    folium.Marker(current_gps, popup="My Position", icon=folium.Icon(color='red', icon='android')).add_to(m)
+    folium.Marker(current_gps, popup="My Start Position", icon=folium.Icon(color='red', icon='home')).add_to(m)
     for name, coord in OUTLET_BANK.items():
         if name in saved_stops:
             folium.Marker(coord, popup=name, icon=folium.Icon(color='green')).add_to(m)
             
     st_folium(m, width=700, height=350, key="manual_filtered_map")
     
-    st.subheader("🏁 Driving Sequence")
+    st.subheader("🏁 Driving Step Sequence")
     for step, idx in enumerate(saved_path[:-1]):
         stop_name = saved_stops[idx]
-        lat, lon = coords_list[idx]
-        single_url = f"
+        target_lat, target_lon = coords_list[idx]
+        
+        single_stop_url = f"https://www.google.com/maps/search/?api=1&query={target_lat},{target_lon}"
+        
+        label_text = f"START HERE: {stop_name}" if step == 0 else f"STOP {step}: {stop_name}"
+        st.link_button(f"🧭 {label_text}", single_stop_url, use_container_width=True)

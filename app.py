@@ -5,23 +5,21 @@ import itertools
 from geopy.distance import geodesic
 import urllib.parse
 import pandas as pd
+from streamlit_js_eval import streamlit_js_eval
 
 st.set_page_config(page_title="Delivery Pro", layout="wide")
 
-st.title("🚚 Manual Control Delivery Router")
-st.write("Search, filter, and choose your outlets manually.")
+st.title("🚚 Live Location Delivery Router")
+st.write("Routes will automatically start from your current iPhone GPS position.")
 
 # --- CONNECT TO YOUR GOOGLE SHEET ---
-# I have embedded your exact link here and added a cleaner function below to fix it!
 GSHEET_URL = "https://docs.google.com/spreadsheets/d/1koRRrPEzAIOlt1LW8sFW6WdY2aoR5l-qogaua3DH6zg/edit?usp=drivesdk"
 
 @st.cache_data(ttl=2)
 def load_sheet_data(url):
     try:
-        # This cleaning step safely strips out 'edit?usp=drivesdk' or any other suffix automatically
         base_url = url.split('/edit')[0]
         csv_url = f"{base_url}/gviz/tq?tqx=out:csv"
-        
         df = pd.read_csv(csv_url)
         return df
     except Exception as e:
@@ -33,6 +31,18 @@ df_raw = load_sheet_data(GSHEET_URL)
 if df_raw is None:
     st.info("Waiting for valid Google Sheet data connection...")
     st.stop()
+
+# --- GET YOUR LIVE IPHONE GPS LOCATION ---
+st.subheader("📍 Your Current Location")
+# This triggers the standard iPhone pop-up asking for permission to use your location
+user_location = streamlit_js_eval(data_string="colloquial", function_name="get_location", key="get_user_gps")
+
+if not user_location:
+    st.warning("🔄 Fetching your current phone GPS location... Please tap 'Allow' if your iPhone asks for location permissions.")
+    current_gps = (16.8409, 96.1735) # Fallback to your standard depot location if GPS loads slowly
+else:
+    current_gps = (user_location['coords']['latitude'], user_location['coords']['longitude'])
+    st.success(f"📍 GPS Location Locked: {current_gps[0]:.4f}, {current_gps[1]:.4f}")
 
 # --- MANUAL SEARCH FILTER BAR ---
 st.subheader("🔍 Filter Outlets")
@@ -90,12 +100,15 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
         route_stops = selected_outlets
         coordinates = [OUTLET_BANK[name] for name in route_stops]
         
-        start_coord = coordinates[0]
-        dest_coords = coordinates[1:]
+        # Inject your live phone location as Stop #0
+        start_coord = current_gps
+        dest_coords = coordinates
         dest_indices = list(range(len(dest_coords)))
+        
         best_distance = float('inf')
         best_path = []
         
+        # Calculate best driving loop starting from where you stand
         for perm in itertools.permutations(dest_indices):
             current_distance = 0
             current_path = [0]
@@ -116,7 +129,7 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
                 best_path = current_path
 
         st.session_state.best_path = best_path
-        st.session_state.route_stops = route_stops
+        st.session_state.route_stops = ["My Current Location"] + route_stops
         st.session_state.total_distance = best_distance
         st.session_state.route_calculated = True
 
@@ -124,22 +137,25 @@ if st.button("🚀 OPTIMIZE MY ROUTE", type="primary"):
 if getattr(st.session_state, 'route_calculated', False):
     saved_stops = st.session_state.route_stops
     saved_path = st.session_state.best_path
-    coords_list = [OUTLET_BANK[name] for name in saved_stops]
+    
+    # Reconstruct the tracking layout array
+    coords_list = [current_gps] + [OUTLET_BANK[name] for name in saved_stops[1:]]
     
     st.success(f"✅ Route Optimized: {st.session_state.total_distance:.1f} km")
     
     # Official Google Maps Mobile Launch Deep Link
-    gmaps_base = "https://www.google.com/maps/dir/"
+    gmaps_base = "https://www.google.com/maps/dir/?api=1&origin=Paris%2CFrance&destination=Cherbourg%2CFrance&travelmode=driving&waypoints=Versailles%2CFrance%7CChartres%2CFrance%7CLe+Mans%2CFrance%7CCaen%2CFrance"
     ordered_coords_strings = [f"{coords_list[idx][0]},{coords_list[idx][1]}" for idx in saved_path]
     full_gmaps_url = gmaps_base + "/".join(ordered_coords_strings[:10])
 
     st.link_button("🗺️ OPEN BATCH IN GOOGLE MAPS APP", full_gmaps_url, use_container_width=True)
 
     # Preview Map Frame
-    m = folium.Map(location=coords_list[0], zoom_start=13)
+    m = folium.Map(location=current_gps, zoom_start=13)
     path_coords = [coords_list[idx] for idx in saved_path]
     folium.PolyLine(path_coords, color="blue", weight=5).add_to(m)
     
+    folium.Marker(current_gps, popup="My Position", icon=folium.Icon(color='red', icon='android')).add_to(m)
     for name, coord in OUTLET_BANK.items():
         if name in saved_stops:
             folium.Marker(coord, popup=name, icon=folium.Icon(color='green')).add_to(m)
@@ -149,8 +165,5 @@ if getattr(st.session_state, 'route_calculated', False):
     st.subheader("🏁 Driving Sequence")
     for step, idx in enumerate(saved_path[:-1]):
         stop_name = saved_stops[idx]
-        lat, lon = OUTLET_BANK[stop_name]
-        single_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-        
-        label = f"STARTING POINT: {stop_name}" if step == 0 else f"STOP {step}: {stop_name}"
-        st.link_button(f"🧭 {label}", single_url, use_container_width=True)
+        lat, lon = coords_list[idx]
+        single_url = f"
